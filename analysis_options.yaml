@@ -10,6 +10,7 @@ exclude:
 
 formatter:
   trailing_commas: preserve
+  page_width: 80
 
 linter:
   rules:
