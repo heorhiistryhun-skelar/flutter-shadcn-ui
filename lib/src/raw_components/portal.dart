@@ -1,3 +1,4 @@
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 /// The position of the [ShadPortal] in the global coordinate system.
@@ -189,7 +190,7 @@ class _ShadPortalState extends State<ShadPortal> {
     BuildContext context,
     ShadAnchorAuto anchor,
   ) {
-    return CompositedTransformFollower(
+    return _ShadAutoPositionFollower(
       link: layerLink,
       offset: anchor.offset,
       targetAnchor: anchor.targetAnchor,
@@ -296,5 +297,279 @@ class ShadPositionDelegate extends SingleChildLayoutDelegate {
     return target != oldDelegate.target ||
         verticalOffset != oldDelegate.verticalOffset ||
         preferBelow != oldDelegate.preferBelow;
+  }
+}
+
+/// A follower widget that automatically adjusts its position when it doesn't
+/// fit on screen.
+class _ShadAutoPositionFollower extends StatefulWidget {
+  const _ShadAutoPositionFollower({
+    required this.link,
+    required this.offset,
+    required this.targetAnchor,
+    required this.followerAnchor,
+    required this.child,
+  });
+
+  final LayerLink link;
+  final Offset offset;
+  final Alignment targetAnchor;
+  final Alignment followerAnchor;
+  final Widget child;
+
+  @override
+  State<_ShadAutoPositionFollower> createState() =>
+      _ShadAutoPositionFollowerState();
+}
+
+class _ShadAutoPositionFollowerState extends State<_ShadAutoPositionFollower> {
+  final _followerKey = GlobalKey();
+
+  Alignment? _adjustedTargetAnchor;
+  Alignment? _adjustedFollowerAnchor;
+  Offset? _adjustedOffset;
+
+  Alignment get _effectiveTargetAnchor =>
+      _adjustedTargetAnchor ?? widget.targetAnchor;
+  Alignment get _effectiveFollowerAnchor =>
+      _adjustedFollowerAnchor ?? widget.followerAnchor;
+  Offset get _effectiveOffset => _adjustedOffset ?? widget.offset;
+
+  @override
+  void initState() {
+    super.initState();
+    _schedulePositionCheck();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ShadAutoPositionFollower oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.targetAnchor != widget.targetAnchor ||
+        oldWidget.followerAnchor != widget.followerAnchor ||
+        oldWidget.offset != widget.offset) {
+      // Reset adjustments when anchor configuration changes
+      _adjustedTargetAnchor = null;
+      _adjustedFollowerAnchor = null;
+      _adjustedOffset = null;
+      _schedulePositionCheck();
+    }
+  }
+
+  void _schedulePositionCheck() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _checkAndAdjustPosition();
+    });
+  }
+
+  void _checkAndAdjustPosition() {
+    final leaderSize = widget.link.leaderSize;
+    if (leaderSize == null || leaderSize == Size.zero) {
+      _schedulePositionCheck();
+      return;
+    }
+
+    final followerContext = _followerKey.currentContext;
+    if (followerContext == null) {
+      _schedulePositionCheck();
+      return;
+    }
+
+    final followerBox = followerContext.findRenderObject() as RenderBox?;
+    if (followerBox == null || !followerBox.hasSize) {
+      _schedulePositionCheck();
+      return;
+    }
+
+    final followerSize = followerBox.size;
+
+    // Get the leader layer from the link
+    final leaderLayer = widget.link.leader;
+    if (leaderLayer == null) {
+      _schedulePositionCheck();
+      return;
+    }
+
+    // Get screen size
+    final screenSize = MediaQuery.of(context).size;
+
+    // Get leader's global position from the layer's offset
+    // The leader layer's offset is relative to its parent, so we need to
+    // compute the full transform
+    final leaderOffset = leaderLayer.offset;
+    final leaderTopLeft = _getLeaderGlobalPosition(leaderLayer, leaderOffset);
+    if (leaderTopLeft == null) {
+      _schedulePositionCheck();
+      return;
+    }
+
+    // Calculate with current (or default) anchors
+    final targetAnchor = widget.targetAnchor;
+    final followerAnchor = widget.followerAnchor;
+    final offset = widget.offset;
+
+    final leaderAnchorPoint = _getAnchorPoint(
+      leaderTopLeft,
+      leaderSize,
+      targetAnchor,
+    );
+    final followerAnchorOffset = _getAnchorOffset(followerSize, followerAnchor);
+    final preferredPosition = leaderAnchorPoint + offset - followerAnchorOffset;
+    final preferredRect = preferredPosition & followerSize;
+
+    var needsUpdate = false;
+    var newTargetAnchor = targetAnchor;
+    var newFollowerAnchor = followerAnchor;
+    var newOffset = offset;
+
+    // Check horizontal fit
+    final overflowLeft = preferredRect.left < 0;
+    final overflowRight = preferredRect.right > screenSize.width;
+
+    if (overflowLeft || overflowRight) {
+      final flippedTargetAnchor = _flipHorizontal(targetAnchor);
+      final flippedFollowerAnchor = _flipHorizontal(followerAnchor);
+      final flippedOffset = Offset(-offset.dx, offset.dy);
+
+      final flippedLeaderAnchorPoint = _getAnchorPoint(
+        leaderTopLeft,
+        leaderSize,
+        flippedTargetAnchor,
+      );
+      final flippedFollowerAnchorOffset = _getAnchorOffset(
+        followerSize,
+        flippedFollowerAnchor,
+      );
+      final flippedPosition =
+          flippedLeaderAnchorPoint +
+          flippedOffset -
+          flippedFollowerAnchorOffset;
+      final flippedRect = flippedPosition & followerSize;
+
+      // Check if flipped position is better
+      final flippedFits =
+          flippedRect.left >= 0 && flippedRect.right <= screenSize.width;
+
+      if (flippedFits) {
+        newTargetAnchor = flippedTargetAnchor;
+        newFollowerAnchor = flippedFollowerAnchor;
+        newOffset = flippedOffset;
+        needsUpdate = true;
+      }
+    }
+
+    // Recalculate with any horizontal adjustments
+    final adjustedLeaderAnchorPoint = _getAnchorPoint(
+      leaderTopLeft,
+      leaderSize,
+      newTargetAnchor,
+    );
+    final adjustedFollowerAnchorOffset = _getAnchorOffset(
+      followerSize,
+      newFollowerAnchor,
+    );
+    final adjustedPosition =
+        adjustedLeaderAnchorPoint + newOffset - adjustedFollowerAnchorOffset;
+    final adjustedRect = adjustedPosition & followerSize;
+
+    // Check vertical fit
+    final overflowTop = adjustedRect.top < 0;
+    final overflowBottom = adjustedRect.bottom > screenSize.height;
+
+    if (overflowTop || overflowBottom) {
+      final flippedTargetAnchor = _flipVertical(newTargetAnchor);
+      final flippedFollowerAnchor = _flipVertical(newFollowerAnchor);
+      final flippedOffset = Offset(newOffset.dx, -newOffset.dy);
+
+      final flippedLeaderAnchorPoint = _getAnchorPoint(
+        leaderTopLeft,
+        leaderSize,
+        flippedTargetAnchor,
+      );
+      final flippedFollowerAnchorOffset = _getAnchorOffset(
+        followerSize,
+        flippedFollowerAnchor,
+      );
+      final flippedPosition =
+          flippedLeaderAnchorPoint +
+          flippedOffset -
+          flippedFollowerAnchorOffset;
+      final flippedRect = flippedPosition & followerSize;
+
+      // Check if flipped position is better
+      final flippedFits =
+          flippedRect.top >= 0 && flippedRect.bottom <= screenSize.height;
+
+      if (flippedFits) {
+        newTargetAnchor = flippedTargetAnchor;
+        newFollowerAnchor = flippedFollowerAnchor;
+        newOffset = flippedOffset;
+        needsUpdate = true;
+      }
+    }
+
+    if (needsUpdate) {
+      setState(() {
+        _adjustedTargetAnchor = newTargetAnchor;
+        _adjustedFollowerAnchor = newFollowerAnchor;
+        _adjustedOffset = newOffset;
+      });
+    }
+  }
+
+  Offset? _getLeaderGlobalPosition(LeaderLayer leader, Offset localOffset) {
+    // Walk up the layer tree to accumulate the transform
+    var currentOffset = localOffset;
+    var current = leader.parent;
+
+    while (current != null) {
+      if (current is OffsetLayer) {
+        currentOffset += current.offset;
+      } else if (current is TransformLayer) {
+        // Apply the transform to the offset
+        final transform = current.transform;
+        if (transform != null) {
+          currentOffset = MatrixUtils.transformPoint(transform, currentOffset);
+        }
+      }
+      current = current.parent;
+    }
+
+    return currentOffset;
+  }
+
+  Offset _getAnchorPoint(Offset topLeft, Size size, Alignment anchor) {
+    return topLeft +
+        Offset(
+          size.width * ((anchor.x + 1) / 2),
+          size.height * ((anchor.y + 1) / 2),
+        );
+  }
+
+  Offset _getAnchorOffset(Size size, Alignment anchor) {
+    return Offset(
+      size.width * ((anchor.x + 1) / 2),
+      size.height * ((anchor.y + 1) / 2),
+    );
+  }
+
+  Alignment _flipHorizontal(Alignment alignment) {
+    return Alignment(-alignment.x, alignment.y);
+  }
+
+  Alignment _flipVertical(Alignment alignment) {
+    return Alignment(alignment.x, -alignment.y);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CompositedTransformFollower(
+      key: _followerKey,
+      link: widget.link,
+      offset: _effectiveOffset,
+      targetAnchor: _effectiveTargetAnchor,
+      followerAnchor: _effectiveFollowerAnchor,
+      child: widget.child,
+    );
   }
 }
