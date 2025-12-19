@@ -12,8 +12,12 @@ sealed class ShadAnchorBase {
 class ShadAnchorAuto extends ShadAnchorBase {
   const ShadAnchorAuto({
     this.offset = Offset.zero,
+    @Deprecated(
+      'No longer needed. Position tracking is now handled automatically '
+      'by CompositedTransformFollower at the compositing layer level.',
+    )
     this.followTargetOnResize = true,
-    this.followerAnchor = Alignment.bottomCenter,
+    this.followerAnchor = Alignment.topCenter,
     this.targetAnchor = Alignment.bottomCenter,
   });
 
@@ -22,6 +26,10 @@ class ShadAnchorAuto extends ShadAnchorBase {
 
   /// Whether the overlay is automatically adjusted to follow the target
   /// widget when the target widget moves dues to a window resize.
+  @Deprecated(
+    'No longer needed. Position tracking is now handled automatically '
+    'by CompositedTransformFollower at the compositing layer level.',
+  )
   final bool followTargetOnResize;
 
   /// The coordinates of the overlay from which the overlay starts, which
@@ -37,17 +45,13 @@ class ShadAnchorAuto extends ShadAnchorBase {
 
     return other is ShadAnchorAuto &&
         other.offset == offset &&
-        other.followTargetOnResize == followTargetOnResize &&
         other.followerAnchor == followerAnchor &&
         other.targetAnchor == targetAnchor;
   }
 
   @override
   int get hashCode =>
-      offset.hashCode ^
-      followTargetOnResize.hashCode ^
-      followerAnchor.hashCode ^
-      targetAnchor.hashCode;
+      offset.hashCode ^ followerAnchor.hashCode ^ targetAnchor.hashCode;
 }
 
 /// Manually specifies the position of the [ShadPortal] in the global
@@ -138,10 +142,6 @@ class ShadPortal extends StatefulWidget {
 class _ShadPortalState extends State<ShadPortal> {
   final layerLink = LayerLink();
   final overlayPortalController = OverlayPortalController();
-  final overlayKey = GlobalKey();
-  Offset? _calculatedTarget;
-  // When scrolling, recalculate the position
-  ScrollNotificationObserverState? _scrollNotificationObserver;
 
   @override
   void initState() {
@@ -156,30 +156,9 @@ class _ShadPortalState extends State<ShadPortal> {
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _scrollNotificationObserver?.removeListener(_handleScrollNotification);
-    _scrollNotificationObserver = ScrollNotificationObserver.maybeOf(context);
-    _scrollNotificationObserver?.addListener(_handleScrollNotification);
-  }
-
-  @override
   void dispose() {
-    _scrollNotificationObserver?.removeListener(_handleScrollNotification);
     hide();
     super.dispose();
-  }
-
-  void _handleScrollNotification(ScrollNotification notification) {
-    // Check if the notification is a scroll update notification and if the
-    // `notification.depth` is 0. This way we only listen to the scroll
-    // notifications from the closest scrollable, instead of those that may be
-    // nested.
-    if (notification is ScrollUpdateNotification &&
-        defaultScrollNotificationPredicate(notification)) {
-      // Recalculate the position of the portal on scroll.
-      _calculatePosition();
-    }
   }
 
   void updateVisibility() {
@@ -187,12 +166,8 @@ class _ShadPortalState extends State<ShadPortal> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (shouldShow) {
-        _calculatePosition();
         show();
       } else {
-        if (_calculatedTarget != null && mounted) {
-          setState(() => _calculatedTarget = null);
-        }
         hide();
       }
     });
@@ -210,129 +185,16 @@ class _ShadPortalState extends State<ShadPortal> {
     }
   }
 
-  void _calculatePosition() {
-    if (!mounted || widget.anchor is! ShadAnchorAuto) return;
-
-    final anchor = widget.anchor as ShadAnchorAuto;
-    final box = context.findRenderObject();
-    final overlayState = Overlay.of(context, debugRequiredFor: widget);
-    final overlayAncestor = overlayState.context.findRenderObject();
-
-    final ready =
-        box is RenderBox &&
-        box.attached &&
-        box.hasSize &&
-        overlayAncestor is RenderBox &&
-        overlayAncestor.attached &&
-        overlayAncestor.hasSize;
-
-    if (!ready) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _calculatePosition();
-      });
-      return;
-    }
-
-    final overlay = overlayKey.currentContext?.findRenderObject() as RenderBox?;
-    final overlaySize = (true == overlay?.hasSize) ? overlay!.size : Size.zero;
-
-    final targetOffset = switch (anchor.targetAnchor) {
-      Alignment.topLeft => box.size.topLeft(Offset.zero),
-      Alignment.topCenter => box.size.topCenter(Offset.zero),
-      Alignment.topRight => box.size.topRight(Offset.zero),
-      Alignment.centerLeft => box.size.centerLeft(Offset.zero),
-      Alignment.center => box.size.center(Offset.zero),
-      Alignment.centerRight => box.size.centerRight(Offset.zero),
-      Alignment.bottomLeft => box.size.bottomLeft(Offset.zero),
-      Alignment.bottomCenter => box.size.bottomCenter(Offset.zero),
-      Alignment.bottomRight => box.size.bottomRight(Offset.zero),
-      final alignment => throw Exception(
-        """ShadAnchorAuto doesn't support the alignment $alignment you provided""",
-      ),
-    };
-
-    var followerOffset = switch (anchor.followerAnchor) {
-      Alignment.topLeft => Offset(-overlaySize.width / 2, -overlaySize.height),
-      Alignment.topCenter => Offset(0, -overlaySize.height),
-      Alignment.topRight => Offset(overlaySize.width / 2, -overlaySize.height),
-      Alignment.centerLeft => Offset(
-        -overlaySize.width / 2,
-        -overlaySize.height / 2,
-      ),
-      Alignment.center => Offset(0, -overlaySize.height / 2),
-      Alignment.centerRight => Offset(
-        overlaySize.width / 2,
-        -overlaySize.height / 2,
-      ),
-      Alignment.bottomLeft => Offset(-overlaySize.width / 2, 0),
-      Alignment.bottomCenter => Offset.zero,
-      Alignment.bottomRight => Offset(overlaySize.width / 2, 0),
-      final alignment => throw Exception(
-        """ShadAnchorAuto doesn't support the alignment $alignment you provided""",
-      ),
-    };
-
-    followerOffset += targetOffset + anchor.offset;
-
-    final target = box.localToGlobal(
-      followerOffset,
-      ancestor: overlayAncestor,
-    );
-
-    if (target != _calculatedTarget) {
-      if (mounted) {
-        setState(() {
-          _calculatedTarget = target;
-        });
-      }
-    } else if (overlay == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _calculatePosition();
-      });
-    }
-  }
-
   Widget buildAutoPosition(
     BuildContext context,
     ShadAnchorAuto anchor,
   ) {
-    if (anchor.followTargetOnResize) {
-      MediaQuery.sizeOf(context);
-    }
-
-    if (_calculatedTarget == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _calculatePosition());
-      return const SizedBox.shrink();
-    }
-
-    final target = _calculatedTarget!;
-
-    final overlay = overlayKey.currentContext?.findRenderObject() as RenderBox?;
-
-    if (overlay == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _calculatePosition();
-      });
-    }
-
-    return CustomSingleChildLayout(
-      delegate: ShadPositionDelegate(
-        target: target,
-        verticalOffset: 0,
-        preferBelow: true,
-      ),
-      child: KeyedSubtree(
-        key: overlayKey,
-        child: Visibility.maintain(
-          // The overlay layout details are available only after the view is
-          // rendered, in this way we can avoid the flickering effect.
-          visible: overlay != null,
-          child: IgnorePointer(
-            ignoring: overlay == null,
-            child: widget.portalBuilder(context),
-          ),
-        ),
-      ),
+    return CompositedTransformFollower(
+      link: layerLink,
+      offset: anchor.offset,
+      targetAnchor: anchor.targetAnchor,
+      followerAnchor: anchor.followerAnchor,
+      child: widget.portalBuilder(context),
     );
   }
 

@@ -364,7 +364,7 @@ class ShadBreadcrumbDropdown extends StatefulWidget {
   /// ShadAnchorAuto(
   ///   offset: Offset(0, 4),
   ///   targetAnchor: Alignment.bottomLeft,
-  ///   followerAnchor: Alignment.bottomRight,
+  ///   followerAnchor: Alignment.topLeft,
   /// ),
   /// ```
   /// {@endtemplate}
@@ -428,7 +428,7 @@ class _ShadBreadcrumbDropdownState extends State<ShadBreadcrumbDropdown> {
         const ShadAnchorAuto(
           offset: Offset(0, 4),
           targetAnchor: Alignment.bottomLeft,
-          followerAnchor: Alignment.bottomRight,
+          followerAnchor: Alignment.topLeft,
         );
 
     final effectiveArrowGap =

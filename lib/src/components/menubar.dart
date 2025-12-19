@@ -251,8 +251,8 @@ class ShadMenubarItem extends StatefulWidget {
   /// The anchor of the context menu shown by the item, defaults to
   /// ```dart
   /// const ShadAnchorAuto(
-  ///   offset: Offset(-4, 8),
-  ///   followerAnchor: Alignment.bottomRight,
+  ///   offset: Offset(0, 4),
+  ///   followerAnchor: Alignment.topLeft,
   ///   targetAnchor: Alignment.bottomLeft,
   /// );
   /// ```
@@ -463,8 +463,8 @@ class _ShadMenubarItemState extends State<ShadMenubarItem> {
         widget.anchor ??
         theme.menubarTheme.anchor ??
         const ShadAnchorAuto(
-          offset: Offset(-4, 8),
-          followerAnchor: Alignment.bottomRight,
+          offset: Offset(0, 4),
+          followerAnchor: Alignment.topLeft,
           targetAnchor: Alignment.bottomLeft,
         );
 

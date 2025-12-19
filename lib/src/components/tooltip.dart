@@ -233,7 +233,7 @@ class _ShadTooltipState extends State<ShadTooltip>
         theme.tooltipTheme.anchor ??
         const ShadAnchorAuto(
           offset: Offset(0, -4),
-          followerAnchor: Alignment.topCenter,
+          followerAnchor: Alignment.bottomCenter,
           targetAnchor: Alignment.topCenter,
         );
 

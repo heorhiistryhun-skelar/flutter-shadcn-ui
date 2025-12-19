@@ -102,7 +102,14 @@ class ShadPopover extends StatefulWidget {
   ///{@template ShadPopover.anchor}
   /// The position of the [popover] in the global coordinate system.
   ///
-  /// Defaults to `ShadAnchorAuto(offset: Offset(0, 4))`.
+  /// Defaults to
+  /// ```dart
+  /// ShadAnchorAuto(
+  ///   offset: Offset(0, 4),
+  ///   targetAnchor: Alignment.bottomCenter,
+  ///   followerAnchor: Alignment.topCenter,
+  /// )
+  /// ```
   /// {@endtemplate}
   final ShadAnchorBase? anchor;
 

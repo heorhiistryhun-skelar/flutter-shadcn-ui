@@ -255,7 +255,7 @@ class ShadDefaultThemeVariant extends ShadThemeVariant {
       dropdownMenuAnchor: const ShadAnchorAuto(
         offset: Offset(0, 4),
         targetAnchor: Alignment.bottomLeft,
-        followerAnchor: Alignment.bottomRight,
+        followerAnchor: Alignment.topLeft,
       ),
       dropdownArrowGap: 4,
     );
@@ -281,7 +281,7 @@ class ShadDefaultThemeVariant extends ShadThemeVariant {
       ),
       anchor: const ShadAnchorAuto(
         offset: Offset(0, -4),
-        followerAnchor: Alignment.topCenter,
+        followerAnchor: Alignment.bottomCenter,
         targetAnchor: Alignment.topCenter,
       ),
       duration: Animate.defaultDuration,
@@ -1021,8 +1021,8 @@ class ShadDefaultThemeVariant extends ShadThemeVariant {
       padding: const EdgeInsets.all(4),
       border: ShadBorder.all(color: colorScheme.border, width: 1),
       anchor: const ShadAnchorAuto(
-        offset: Offset(-4, 8),
-        followerAnchor: Alignment.bottomRight,
+        offset: Offset(0, 4),
+        followerAnchor: Alignment.topLeft,
         targetAnchor: Alignment.bottomLeft,
       ),
       buttonHeight: 32,
